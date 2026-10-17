@@ -17,6 +17,8 @@ import {
   type EmoteId,
   RULES,
   initialRack,
+  otherSeat,
+  rackLayout,
 } from './constants';
 
 export interface PlayerInfo {
@@ -144,8 +146,122 @@ export function createInitialState(table: TableId): GameState {
  * - Presence changes never change the phase.
  */
 export function reduce(state: GameState, action: GameAction): ReduceResult {
-  void action;
-  return { ok: true, state, events: [] };
+  const reject = (error: RuleError): ReduceResult => ({ ok: false, state, error });
+  const next = structuredClone(state);
+  const events: GameEvent[] = [];
+
+  switch (action.type) {
+    case 'join': {
+      if (state.players[action.seat]?.connected) return reject('seat_taken');
+      next.players[action.seat] = { name: action.name, color: action.color, connected: true };
+      if (state.phase === 'waiting' && next.players.every(player => player !== null)) {
+        next.phase = 'playing';
+        next.turn = 0;
+        events.push({ type: 'game_started' });
+      }
+      break;
+    }
+    case 'presence': {
+      const player = next.players[action.seat];
+      if (player) player.connected = action.connected;
+      break;
+    }
+    case 'throw_result': {
+      if (action.seat !== state.turn) return reject('not_your_turn');
+      if (state.phase !== 'playing') return reject('wrong_phase');
+      if (action.throwId !== state.throwId) return reject('stale_throw');
+      const side = otherSeat(action.seat);
+      const result = action.result;
+      if (result.kind === 'sink' && !state.sides[side].some(cup => cup.id === result.cupId)) {
+        return reject('unknown_cup');
+      }
+      next.throwId++;
+      next.throwsLeft--;
+      next.canRerack = false;
+      if (result.kind === 'sink') {
+        next.madeThisRound++;
+        next.sides[side] = next.sides[side].filter(cup => cup.id !== result.cupId);
+        if (result.bounced) events.push({ type: 'bounce_sink', side, cupId: result.cupId });
+        events.push({ type: 'cup_removed', side, cupId: result.cupId, cause: 'sink' });
+        if (finishGame(next, side, events)) break;
+        if (result.bounced) {
+          next.phase = 'awaiting_pick';
+          next.pendingPick = { defender: side, remaining: 1 };
+          events.push({ type: 'pick_required', defender: side });
+          break;
+        }
+      } else {
+        events.push({ type: result.kind, seat: action.seat });
+      }
+      finishThrowPair(next, events);
+      break;
+    }
+    case 'pick_cup': {
+      if (state.phase !== 'awaiting_pick' || !state.pendingPick) return reject('wrong_phase');
+      const { defender } = state.pendingPick;
+      if (action.seat !== defender) return reject('not_your_turn');
+      if (!state.sides[defender].some(cup => cup.id === action.cupId)) return reject('unknown_cup');
+      next.sides[defender] = next.sides[defender].filter(cup => cup.id !== action.cupId);
+      events.push({ type: 'cup_removed', side: defender, cupId: action.cupId, cause: 'bounce_pick' });
+      if (finishGame(next, defender, events)) break;
+      const remaining = state.pendingPick.remaining - 1;
+      if (remaining > 0) {
+        next.pendingPick = { defender, remaining };
+      } else {
+        next.pendingPick = null;
+        next.phase = 'playing';
+        finishThrowPair(next, events);
+      }
+      break;
+    }
+    case 'rerack': {
+      if (action.seat !== state.turn) return reject('not_your_turn');
+      if (state.phase !== 'playing') return reject('wrong_phase');
+      if (!state.canRerack) return reject('rerack_not_allowed');
+      if (state.reracksLeft[action.seat] <= 0) return reject('no_reracks_left');
+      const side = otherSeat(action.seat);
+      const cups = [...state.sides[side]].sort((a, b) => a.id - b.id);
+      const positions = rackLayout(action.shape, cups.length);
+      next.sides[side] = cups.map((cup, i) => ({ id: cup.id, ...positions[i]! }));
+      next.reracksLeft[action.seat]--;
+      events.push({ type: 'reracked', side, shape: action.shape });
+      break;
+    }
+    case 'rematch': {
+      if (state.phase !== 'game_over') return reject('wrong_phase');
+      const fresh = createInitialState(state.table);
+      fresh.players = next.players;
+      fresh.phase = 'playing';
+      fresh.turn = otherSeat(state.winner!);
+      return { ok: true, state: fresh, events: [{ type: 'game_started' }] };
+    }
+  }
+  return { ok: true, state: next, events };
+}
+
+/** Resolve a win before any pending pick or turn transition. Only mutates the cloned state. */
+function finishGame(state: GameState, side: Seat, events: GameEvent[]): boolean {
+  if (state.sides[side].length > 0) return false;
+  state.phase = 'game_over';
+  state.winner = state.turn;
+  state.pendingPick = null;
+  events.push({ type: 'game_over', winner: state.turn });
+  return true;
+}
+
+/** Called after a throw and all of its extra cup picks have finished. */
+function finishThrowPair(state: GameState, events: GameEvent[]): void {
+  if (state.throwsLeft > 0) return;
+  state.throwsLeft = RULES.throwsPerTurn;
+  if (state.madeThisRound === RULES.throwsPerTurn) {
+    state.madeThisRound = 0;
+    events.push({ type: 'balls_back', seat: state.turn });
+  } else {
+    state.turn = otherSeat(state.turn);
+    state.madeThisRound = 0;
+    state.canRerack = true;
+    events.push({ type: 'turn_changed', turn: state.turn });
+  }
 }
 
 // Re-exported for convenience in reducers/UI.
