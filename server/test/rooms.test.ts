@@ -130,16 +130,33 @@ describe('RoomManager', () => {
     expect(manager.rooms.size).toBe(1);
     expect(logs).toHaveLength(4);
   });
-  it('rejects bad, active, and expired tokens without altering state', () => {
+  it('rejects bad and expired tokens, and frees an expired seat for a new player', () => {
     const host = pair();
     const c = peer();
-    send(c, { t: 'rejoin', code: host.code, token: host.token });
     manager.disconnect(a);
     send(c, { t: 'rejoin', code: host.code, token: 'bad' });
     vi.advanceTimersByTime(RULES.rejoinGraceSeconds * 1000);
     send(c, { t: 'rejoin', code: host.code, token: host.token });
-    expect(c.messages).toMatchObject([{ code: 'bad_token' }, { code: 'bad_token' }, { code: 'bad_token' }]);
+    expect(c.messages).toMatchObject([{ code: 'bad_token' }, { code: 'bad_token' }]);
     expect(manager.rooms.size).toBe(1);
+    // The guest is told, and someone new can take the freed seat with the same code.
+    expect(b.messages.at(-1)).toEqual({ t: 'opponent_left', seat: 0 });
+    c.clear();
+    send(c, { t: 'join_room', code: host.code, name: 'Carol', color: '#112233' });
+    expect(c.messages[0]).toMatchObject({ t: 'joined', seat: 0 });
+  });
+  it('lets a valid token take over a seat whose old socket was never closed', () => {
+    const host = pair();
+    const c = peer();
+    send(c, { t: 'rejoin', code: host.code, token: host.token });
+    expect(c.messages[0]).toMatchObject({ t: 'joined', seat: 0 });
+    // The stale socket no longer speaks for the seat, and its eventual close is a no-op.
+    a.clear(); c.clear();
+    send(a, { t: 'emote', emote: 'nice' });
+    expect(a.messages).toMatchObject([{ code: 'not_in_room' }]);
+    manager.disconnect(a);
+    send(c, { t: 'ping', n: 1 });
+    expect(c.messages).toEqual([{ t: 'pong', n: 1 }]);
   });
   it('deletes an empty room after grace', () => {
     const host = create();

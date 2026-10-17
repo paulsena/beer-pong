@@ -1,7 +1,7 @@
 // What the game needs from a connection. NetClient satisfies it; LocalSession runs practice offline.
 import {
   type ClientMessage, type GameState, type ServerMessage, type ServerMessageOf, type ServerMessageType, type TableId,
-  createInitialState, reduce,
+  RULES, createInitialState, reduce,
 } from '@bp/shared';
 
 export interface Session {
@@ -56,6 +56,8 @@ export class LocalSession implements Session {
         return this.apply({ type: 'pick_cup', seat, cupId: msg.cupId });
       }
       case 'rematch':
+        // The practice opponent always agrees.
+        this.apply({ type: 'rematch', seat: 1 });
         return this.apply({ type: 'rematch', seat: 0 });
       case 'ping':
         return this.emit({ t: 'pong', n: msg.n });
@@ -70,7 +72,7 @@ export class LocalSession implements Session {
     let state = r.state;
     const events = [...r.events];
     if (state.phase === 'playing' && state.turn === 1) {
-      state = { ...state, turn: 0, throwsLeft: 2, madeThisRound: 0, canRerack: true };
+      state = { ...state, turn: 0, throwsLeft: RULES.throwsPerTurn, madeThisRound: 0, canRerack: true };
       events.push({ type: 'turn_changed', turn: 0 });
     }
     this.state = state;

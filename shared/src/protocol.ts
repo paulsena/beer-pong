@@ -53,6 +53,8 @@ export type ServerMessage =
   /** Authoritative state after every accepted action, with the events it produced. */
   | { t: 'state'; state: GameState; events: GameEvent[] }
   | { t: 'presence'; seat: Seat; connected: boolean }
+  /** A disconnected player's rejoin window ran out; their seat is free for a new player (same code). */
+  | { t: 'opponent_left'; seat: Seat }
   // Relays from the other player:
   | { t: 'throw_start'; seat: Seat; throwId: number; p: Vec3; v: Vec3 }
   | { t: 'ball'; seat: Seat; sample: BallSample }

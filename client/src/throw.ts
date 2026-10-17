@@ -97,7 +97,8 @@ interface Sample {
   t: number;
 }
 
-export function createThrowInput(canvas: HTMLCanvasElement, camera: THREE.PerspectiveCamera): ThrowInput {
+/** `facingYaw`: the thrower's fixed facing (0 = toward -Z). Defaults to the camera's current facing. */
+export function createThrowInput(canvas: HTMLCanvasElement, camera: THREE.PerspectiveCamera, facingYaw?: number): ThrowInput {
   let enabled = false;
   let holding = false;
   let shift = false;
@@ -110,6 +111,7 @@ export function createThrowInput(canvas: HTMLCanvasElement, camera: THREE.Perspe
   const tmp = new THREE.Vector3();
 
   function yaw(): number {
+    if (facingYaw !== undefined) return facingYaw;
     camera.getWorldDirection(tmp);
     return Math.atan2(-tmp.x, -tmp.z);
   }

@@ -286,7 +286,12 @@ describe('wins and rematches', () => {
     for (let id = 0; id < 10; id++) state = sink(state, id).state;
     state = accept(state, { type: 'presence', seat: 0, connected: false }).state;
     for (const seat of [0, 1] as const) {
-      const result = accept(state, { type: 'rematch', seat });
+      // One vote waits for the other player; the second vote starts the new game.
+      const first = accept(state, { type: 'rematch', seat });
+      expect(first.state.phase).toBe('game_over');
+      expect(first.state.rematchVotes[seat]).toBe(true);
+      expect(first.events).toEqual([]);
+      const result = accept(first.state, { type: 'rematch', seat: otherSeat(seat) });
       expect(result.state).toEqual({ ...createInitialState('backyard'), players: state.players, phase: 'playing', turn: otherSeat(winner) });
       expect(result.events).toEqual([{ type: 'game_started' }]);
     }

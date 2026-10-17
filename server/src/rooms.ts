@@ -66,12 +66,15 @@ export class RoomManager {
       if (msg.t === 'rejoin') {
         const room = this.rooms.get(msg.code.trim().toUpperCase());
         if (!room) return this.error(sender, 'room_not_found');
+        // A live connection on the seat may be a half-open socket the server hasn't noticed is dead
+        // yet; the token proves ownership, so the new connection takes the seat over.
         const seat = ([0, 1] as const).find(s => {
           const r = room.seats[s];
-          return r && r.token === msg.token && !r.connection && r.expires !== null && r.expires > this.clock.now();
+          return r && r.token === msg.token && (r.connection !== null || (r.expires !== null && r.expires > this.clock.now()));
         });
         if (seat === undefined) return this.error(sender, 'bad_token');
         const reservation = room.seats[seat]!;
+        if (reservation.connection) this.memberships.delete(reservation.connection);
         if (!room.dispatch({ type: 'presence', seat, connected: true }, sender, () => {
           this.clock.clearTimeout(reservation.timer);
           reservation.connection = sender;
@@ -93,8 +96,10 @@ export class RoomManager {
         const found = this.rooms.get(msg.code.trim().toUpperCase());
         if (!found) return this.error(sender, 'room_not_found');
         room = found;
-        if (room.seats[1]) return this.error(sender, 'room_full');
-        seat = 1;
+        // Normally seat 1; a seat freed by an expired rejoin window can be taken by someone new.
+        const free = ([0, 1] as const).find(s => !room.seats[s]);
+        if (free === undefined) return this.error(sender, 'room_full');
+        seat = free;
       }
       if (!room.dispatch({ type: 'join', seat, name: msg.name.trim().slice(0, NET.maxNameLength), color: msg.color.toLowerCase() }, sender, () => {
         room.seats[seat] = { token: randomBytes(32).toString('hex'), connection: sender, expires: null };
@@ -142,7 +147,16 @@ export class RoomManager {
     room.dispatch({ type: 'presence', seat, connected: false });
     room.send(otherSeat(seat), { t: 'presence', seat, connected: false });
     reservation.timer = this.clock.setTimeout(() => {
-      if (room.seats.every(r => !r || (!r.connection && r.expires !== null && r.expires <= this.clock.now()))) this.rooms.delete(room.code);
+      if (room.seats[seat] !== reservation || reservation.connection) return;
+      if (room.seats.every(r => !r || (!r.connection && r.expires !== null && r.expires <= this.clock.now()))) {
+        this.rooms.delete(room.code);
+        this.log(`room ${room.code} closed`);
+        return;
+      }
+      // The other player is still here: free the seat so someone can join with the same code.
+      room.seats[seat] = null;
+      room.send(otherSeat(seat), { t: 'opponent_left', seat });
+      this.log(`room ${room.code} seat ${seat} expired`);
     }, RULES.rejoinGraceSeconds * 1000);
     this.log(`room ${room.code} leave seat ${seat}`);
   }

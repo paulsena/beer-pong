@@ -22,6 +22,8 @@ const BALL_LINGER = 0.9;
 const CAMERA_TRACK = 0.6;
 /** Swat hit radius around the ball (m); generous because the ball is small and fast. */
 const SWAT_RADIUS = 0.12;
+/** Drop an opponent replay after this long without samples. */
+const REPLAY_STALL_MS = 2500;
 
 export interface GameOptions {
   canvas: HTMLCanvasElement;
@@ -58,6 +60,11 @@ export class Game {
 
   private rerackOffered = -1;
   private pickerOpen = false;
+  private gameOverShown = false;
+  /** throwId of a result we sent that the server hasn't acknowledged yet. */
+  private resultPending: number | null = null;
+  /** Wall-clock ms of the last opponent ball sample, to drop a replay whose thrower vanished. */
+  private lastSampleAt = 0;
 
   constructor(private readonly opts: GameOptions) {
     const { canvas, seat, state } = opts;
@@ -77,7 +84,8 @@ export class Game {
     this.opponent.object.rotation.y = opp === 0 ? Math.PI : 0;
     this.gs.scene.add(this.opponent.object);
 
-    this.throwInput = createThrowInput(canvas, this.gs.camera);
+    // Aim from the seat's fixed facing, not the camera (which turns to follow the ball).
+    this.throwInput = createThrowInput(canvas, this.gs.camera, seat === 0 ? 0 : Math.PI);
     this.throwInput.onRelease((p, v) => this.launch(p, v));
 
     canvas.addEventListener('pointerdown', this.onPointerDown);
@@ -150,10 +158,16 @@ export class Game {
       session.on('throw_start', (m) => this.onRemoteThrowStart(m.throwId, m.p)),
       session.on('ball', (m) => this.onRemoteSample(m.sample)),
       session.on('swat', (m) => this.onSwatReceived(m.throwId)),
+      session.on('opponent_left', () => {
+        this.replay = null;
+        this.opts.ui.toast('Opponent left. Share the room code so someone can take their spot.');
+      }),
       session.on('presence', (m) => {
         if (m.seat !== this.mySeat) this.opts.ui.toast(m.connected ? 'Opponent is back' : 'Opponent disconnected — waiting 60s');
       }),
       session.on('error', (m) => {
+        // A rejected result won't be acknowledged; don't block the next throw waiting for it.
+        this.resultPending = null;
         if (m.code !== 'stale_throw') this.opts.ui.toast(`Server: ${m.message}`);
       }),
     );
@@ -183,6 +197,11 @@ export class Game {
   private applyState(state: GameState, events: GameEvent[]) {
     const prev = this.state;
     this.state = state;
+    if (this.resultPending !== null && state.throwId > this.resultPending) this.resultPending = null;
+    if (events.some((e) => e.type === 'game_started')) {
+      this.rerackOffered = -1;
+      this.resultPending = null;
+    }
     const { ui, audio } = this.opts;
     const me = this.mySeat;
     const opp = otherSeat(me);
@@ -201,7 +220,10 @@ export class Game {
         }
       }
       this.gs.setCups(side, state.sides[side]);
-      this.physics?.setCups(side, state.sides[side]);
+      // Rebuilding colliders resets contacts mid-throw, so only do it when the rack changed.
+      if (prev === state || JSON.stringify(prev.sides[side]) !== JSON.stringify(state.sides[side])) {
+        this.physics?.setCups(side, state.sides[side]);
+      }
     }
 
     for (const ev of events) {
@@ -270,8 +292,15 @@ export class Game {
       ui.hideRerackPicker();
     }
 
-    if (s.phase === 'game_over' && s.winner !== null) {
+    if (s.phase === 'game_over' && s.winner !== null && !this.gameOverShown) {
+      this.gameOverShown = true;
       ui.showGameOver(s.winner === me, () => session.send({ t: 'rematch' }));
+    } else if (s.phase === 'game_over' && s.rematchVotes[otherSeat(me)] && !s.rematchVotes[me]) {
+      ui.toast('Opponent wants a rematch');
+    } else if (s.phase !== 'game_over' && this.gameOverShown) {
+      this.gameOverShown = false;
+      ui.showHud();
+      ui.updateHud(s, me);
     }
   }
 
@@ -279,7 +308,7 @@ export class Game {
 
   private canThrow() {
     const s = this.state;
-    return s.phase === 'playing' && s.turn === this.mySeat && this.myThrowId === null && !!this.physics && this.linger < 0;
+    return s.phase === 'playing' && s.turn === this.mySeat && this.myThrowId === null && this.resultPending === null && !!this.physics && this.linger < 0;
   }
 
   private handPoint(): Vec3 {
@@ -338,6 +367,7 @@ export class Game {
     if (throwId === null) return;
     this.sendSample(true);
     this.opts.session.send({ t: 'throw_result', throwId, result });
+    this.resultPending = throwId;
     this.myThrowId = null;
     // A sunk ball disappears into the beer; a miss stays visible for a moment.
     this.linger = result.kind === 'sink' ? 0 : BALL_LINGER;
@@ -365,6 +395,7 @@ export class Game {
 
   private onRemoteThrowStart(throwId: number, p: Vec3) {
     this.replay = { throwId, samples: [{ throwId, t: 0, p, q: [0, 0, 0, 1], bounced: false }], start: performance.now(), bounced: false };
+    this.lastSampleAt = performance.now();
     this.gs.ball.visible = true;
     this.gs.ball.position.set(...p);
     this.fx.trailStart(this.gs.ball);
@@ -377,6 +408,7 @@ export class Game {
     if (sample.bounced && !this.replay.bounced) this.opts.audio.play('table_bounce');
     this.replay.bounced ||= sample.bounced;
     if (!last || sample.t >= last.t) this.replay.samples.push(sample);
+    this.lastSampleAt = performance.now();
   }
 
   private updateReplay() {
@@ -392,7 +424,10 @@ export class Game {
     this.gs.ball.position.set(...a.p).lerp(new THREE.Vector3(...b.p), k);
     this.gs.ball.quaternion.set(...a.q).slerp(new THREE.Quaternion(...b.q), k);
     // The throw is over once the server has moved on and we've replayed the last sample.
-    if (this.state.throwId > r.throwId && t > s[s.length - 1]!.t + BALL_LINGER * 1000) {
+    const resolved = this.state.throwId > r.throwId && t > s[s.length - 1]!.t + BALL_LINGER * 1000;
+    // The thrower vanished mid-throw (closed the tab, lost connection): don't leave a frozen ball.
+    const stalled = performance.now() - this.lastSampleAt > REPLAY_STALL_MS;
+    if (resolved || stalled) {
       this.replay = null;
       this.gs.ball.visible = false;
       this.fx.trailStop();

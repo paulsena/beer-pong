@@ -67,6 +67,8 @@ export interface GameState {
    * the counter. Ball-state and swat messages are tagged with it too.
    */
   throwId: number;
+  /** Rematch votes during game_over; a new game starts once both seats have voted. */
+  rematchVotes: [boolean, boolean];
 }
 
 export type ThrowResult =
@@ -83,7 +85,7 @@ export type GameAction =
   | { type: 'throw_result'; seat: Seat; throwId: number; result: ThrowResult }
   /** Defender picks the extra cup to remove after a bounce sink. */
   | { type: 'pick_cup'; seat: Seat; cupId: number }
-  /** Reset to a fresh game with the same players and table (after game_over). */
+  /** Vote for a rematch (after game_over). Both votes start a fresh game, same players and table. */
   | { type: 'rematch'; seat: Seat };
 
 /** Things that happened, for FX/audio/HUD. Emitted by `reduce` alongside the new state. */
@@ -126,6 +128,7 @@ export function createInitialState(table: TableId): GameState {
     pendingPick: null,
     winner: null,
     throwId: 0,
+    rematchVotes: [false, false],
   };
 }
 
@@ -229,6 +232,8 @@ export function reduce(state: GameState, action: GameAction): ReduceResult {
     }
     case 'rematch': {
       if (state.phase !== 'game_over') return reject('wrong_phase');
+      next.rematchVotes[action.seat] = true;
+      if (!next.rematchVotes.every(Boolean)) break;
       const fresh = createInitialState(state.table);
       fresh.players = next.players;
       fresh.phase = 'playing';

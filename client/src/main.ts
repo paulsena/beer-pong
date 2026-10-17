@@ -21,6 +21,8 @@ declare global {
   }
 }
 
+const CONNECT_TIMEOUT_MS = 5000;
+
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const uiRoot = document.querySelector<HTMLElement>('#ui')!;
 const params = new URLSearchParams(location.search);
@@ -61,6 +63,10 @@ function startOnline() {
   const audio = createAudio();
   const net = new NetClient();
   let game: Game | null = null;
+  // A refresh can rejoin without touching the menu, so unlock audio on the first gesture too.
+  const unlock = () => void audio.unlock();
+  window.addEventListener('pointerdown', unlock, { once: true });
+  window.addEventListener('keydown', unlock, { once: true });
   ui.onUiSound?.(() => audio.play('ui_click'));
 
   net.onStatus((s) => {
@@ -95,25 +101,35 @@ function startOnline() {
     void game.start();
   }
 
+  /** Resolves false (with an error shown) if the server can't be reached within a few seconds. */
   async function connect() {
+    const timeout = new Promise<false>((resolve) => setTimeout(() => resolve(false), CONNECT_TIMEOUT_MS));
+    const ok = await Promise.race([net.connect().then(() => true as const, () => false as const), timeout]);
+    if (!ok) ui.showError('Could not reach the game server. Is it running?');
+    return ok;
+  }
+
+  // One create/join in flight at a time, so repeated clicks don't queue duplicate requests.
+  let requesting = false;
+  async function request(send: () => void) {
+    if (requesting) return;
+    requesting = true;
     try {
-      await net.connect();
-      return true;
-    } catch {
-      ui.showError('Could not reach the game server.');
-      return false;
+      if (await connect()) send();
+    } finally {
+      requesting = false;
     }
   }
 
   ui.showMenu(
     {
-      onCreate: async ({ name, color, table }) => {
+      onCreate: ({ name, color, table }) => {
         void audio.unlock();
-        if (await connect()) net.send({ t: 'create_room', name, color, table });
+        void request(() => net.send({ t: 'create_room', name, color, table }));
       },
-      onJoin: async ({ name, color, code }) => {
+      onJoin: ({ name, color, code }) => {
         void audio.unlock();
-        if (await connect()) net.send({ t: 'join_room', name, color, code: code.trim().toUpperCase() });
+        void request(() => net.send({ t: 'join_room', name, color, code: code.trim().toUpperCase() }));
       },
     },
     params.get('room') ?? undefined,
