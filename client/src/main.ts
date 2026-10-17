@@ -61,6 +61,7 @@ function startOnline() {
   const audio = createAudio();
   const net = new NetClient();
   let game: Game | null = null;
+  ui.onUiSound?.(() => audio.play('ui_click'));
 
   net.onStatus((s) => {
     if (s === 'reconnecting') ui.toast('Connection lost — reconnecting…');

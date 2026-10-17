@@ -19,7 +19,7 @@ const REPLAY_DELAY_MS = 100;
 /** How long a finished throw's ball stays visible before it is cleared. */
 const BALL_LINGER = 0.9;
 /** How much the camera turns toward the ball in flight (0..1). */
-const CAMERA_TRACK = 0.35;
+const CAMERA_TRACK = 0.6;
 /** Swat hit radius around the ball (m); generous because the ball is small and fast. */
 const SWAT_RADIUS = 0.12;
 
@@ -64,7 +64,8 @@ export class Game {
     this.state = state;
     this.gs = createScene(canvas, state.table);
     this.gs.setSeatView(seat);
-    this.defaultLook.set(0, 0, (seat === 0 ? -1 : 1) * TABLE.length * 0.3);
+    // Aim a little above the far rack so the opponent's head clears the HUD.
+    this.defaultLook.set(0, 0.15, (seat === 0 ? -1 : 1) * TABLE.length * 0.4);
     this.lookTarget.copy(this.defaultLook);
     this.fx = createFx(this.gs.scene, this.gs.camera);
 
@@ -84,6 +85,8 @@ export class Game {
     this.listen();
     this.wireSocial();
     opts.ui.showHud();
+    opts.ui.onUiSound?.(() => opts.audio.play('ui_click'));
+    opts.ui.setMuteHandler?.(opts.audio.isMuted?.() ?? false, (m) => opts.audio.setMuted(m));
     opts.audio.setAmbience(state.table);
     this.applyState(state, []);
   }
@@ -246,15 +249,16 @@ export class Game {
       ui.hideCupPicker();
     }
 
-    // Offer a re-rack once per turn, at its start.
-    const turnKey = s.throwId;
-    const canOffer = s.phase === 'playing' && s.turn === me && s.canRerack && s.reracksLeft[me] > 0 && s.sides[otherSeat(me)].length > 1;
-    if (canOffer && this.rerackOffered !== turnKey) {
-      this.rerackOffered = turnKey;
+    // Offer a re-rack at the start of a turn, once per opponent cup count (so skipping doesn't nag),
+    // and only once some cups are gone.
+    const oppCups = s.sides[otherSeat(me)].length;
+    const canOffer = s.phase === 'playing' && s.turn === me && s.canRerack && s.reracksLeft[me] > 0 && oppCups > 1 && oppCups < 10;
+    if (canOffer && this.rerackOffered !== oppCups) {
+      this.rerackOffered = oppCups;
       ui.showRerackPicker(RERACK_SHAPES, s.reracksLeft[me], (shape) => {
         session.send({ t: 'rerack', shape });
         ui.hideRerackPicker();
-      }, () => ui.hideRerackPicker());
+      }, () => ui.hideRerackPicker(), s.sides[otherSeat(me)].length);
     } else if (!canOffer) {
       ui.hideRerackPicker();
     }
