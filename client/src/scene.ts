@@ -2,7 +2,9 @@
 // Track D owns the lighting/post parts of this file (renderer settings, composer passes).
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { BloomEffect, EffectComposer, EffectPass, RenderPass, SMAAEffect } from 'postprocessing';
+import {
+  BloomEffect, EffectComposer, EffectPass, RenderPass, SMAAEffect, SMAAPreset, ToneMappingEffect, ToneMappingMode, VignetteEffect,
+} from 'postprocessing';
 import { type CupState, type Seat, type TableId, CUP, TABLE, cupWorldPosition, eyePosition } from '@bp/shared';
 import { ENVIRONMENTS, type Environment } from './environments';
 import { buildBall, buildCup, buildTable } from './objects';
@@ -39,7 +41,11 @@ export function createScene(canvas: HTMLCanvasElement, tableId: TableId): GameSc
 
   const scene = new THREE.Scene();
   const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  const roomEnv = new RoomEnvironment();
+  const envMap = pmrem.fromScene(roomEnv, 0.04).texture;
+  scene.environment = envMap;
+  scene.environmentIntensity = 0.5; // environments override this to suit their mood
+  roomEnv.dispose();
   pmrem.dispose();
 
   const camera = new THREE.PerspectiveCamera(60, 1, 0.02, 200);
@@ -86,7 +92,12 @@ export function createScene(canvas: HTMLCanvasElement, tableId: TableId): GameSc
     luminanceSmoothing: env.post.bloomSmoothing,
     mipmapBlur: true,
   });
-  composer.addPass(new EffectPass(camera, bloom, new SMAAEffect()));
+  // The composer renders to float targets, so the renderer's own tone mapping never runs:
+  // bloom works on HDR values, then ACES tone mapping + vignette, then SMAA on the LDR image.
+  const toneMapping = new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC });
+  const vignette = new VignetteEffect({ offset: 0.3, darkness: env.post.vignette ?? 0.45 });
+  composer.addPass(new EffectPass(camera, bloom, toneMapping, vignette));
+  composer.addPass(new EffectPass(camera, new SMAAEffect({ preset: SMAAPreset.HIGH })));
 
   function setSeatView(seat: Seat) {
     const e = eyePosition(seat);
@@ -136,6 +147,7 @@ export function createScene(canvas: HTMLCanvasElement, tableId: TableId): GameSc
     renderer, scene, camera, env, table, ball, cups, setCups, setCameraPreset, setSeatView, render, resize,
     dispose() {
       env.dispose();
+      envMap.dispose();
       composer.dispose();
       renderer.dispose();
     },

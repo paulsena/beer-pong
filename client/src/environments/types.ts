@@ -17,6 +17,8 @@ export interface PostSettings {
   bloomIntensity: number;
   bloomThreshold: number;
   bloomSmoothing: number;
+  /** Vignette darkness, 0..1 (optional; default 0.45). */
+  vignette?: number;
 }
 
 export interface EnvContext {
