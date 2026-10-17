@@ -55,14 +55,15 @@ export const PHYSICS = {
   fixedDt: 1 / 120,
   tableRestitution: 0.75,
   tableFriction: 0.4,
-  cupRestitution: 0.3,
+  /** Combined with Min against the ball: cup walls (and the beer behind them) kill bounces. */
+  cupRestitution: 0.2,
   cupFriction: 0.5,
   /** A throw ends as a miss when the ball goes below this Y (table top is 0). */
   missBelowY: -TABLE.height + 0.05,
   /** ...or after this many seconds in flight. */
   maxFlightSeconds: 6,
   /** Ball counts as sunk once its center is this far below the cup rim, inside the cup radius. */
-  sinkDepth: 0.04,
+  sinkDepth: 0.02,
 } as const;
 
 export const THROW = {
@@ -72,7 +73,7 @@ export const THROW = {
   /** Random aim wobble, radians (1 sigma). */
   wobble: 0.012,
   /** Ball release point relative to the thrower's eye. */
-  releaseOffset: { x: 0, y: -0.15, z: -0.35 },
+  releaseOffset: { x: 0.14, y: -0.2, z: -0.3 },
 } as const;
 
 /** Thrower eye position for seat 0 (mirror Z for seat 1). */

@@ -117,7 +117,8 @@ export class RoomManager {
         const allowed = msg.t === 'swat' ? otherSeat(room.state.turn) : room.state.turn;
         if (seat !== allowed) return this.error(sender, 'not_your_turn');
         const throwId = msg.t === 'ball' ? msg.sample.throwId : msg.throwId;
-        if (throwId !== room.state.throwId) return this.error(sender, 'stale_throw');
+        // Late samples from a throw that already resolved are expected; drop them quietly.
+        if (throwId !== room.state.throwId) return msg.t === 'ball' ? undefined : this.error(sender, 'stale_throw');
         break;
       }
     }

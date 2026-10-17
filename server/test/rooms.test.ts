@@ -101,7 +101,10 @@ describe('RoomManager', () => {
     a.clear();
     send(a, { t: 'swat', throwId: 0 });
     send(a, { t: 'ball', sample: { throwId: 9, t: 0, p: [0, 0, 0], q: [0, 0, 0, 1], bounced: false } });
+    send(a, { t: 'throw_start', throwId: 9, p: [0, 0, 0], v: [0, 1, 0] });
+    // Stale ball samples are dropped silently; a stale throw_start is an error.
     expect(a.messages).toMatchObject([{ code: 'not_your_turn' }, { code: 'stale_throw' }]);
+    expect(b.messages).toEqual([]);
   });
   it('relays social messages and responds to ping only to sender', () => {
     pair();
