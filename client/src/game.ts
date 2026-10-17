@@ -134,6 +134,13 @@ export class Game {
     return true;
   }
 
+  /** Test hook: launch with an exact release point and velocity. */
+  scriptedLaunch(p: Vec3, v: Vec3) {
+    if (!this.canThrow()) return false;
+    this.launch(p, v);
+    return true;
+  }
+
   // ---------- networking ----------
 
   private listen() {
