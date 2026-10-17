@@ -62,25 +62,52 @@ export function createScene(canvas: HTMLCanvasElement, tableId: TableId): GameSc
   scene.add(ball);
 
   const cups: [Map<number, THREE.Group>, Map<number, THREE.Group>] = [new Map(), new Map()];
+  /** Removed cups pop up and shrink away; re-racked cups glide to their new spots. */
+  const leaving: { mesh: THREE.Group; t: number }[] = [];
+  const CUP_LEAVE_SECONDS = 0.35;
+  const CUP_GLIDE_RATE = 10;
+
   function setCups(side: Seat, list: CupState[]) {
     const map = cups[side];
     const alive = new Set(list.map((c) => c.id));
     for (const [id, mesh] of map) {
       if (!alive.has(id)) {
-        scene.remove(mesh);
         map.delete(id);
+        leaving.push({ mesh, t: 0 });
       }
     }
     for (const c of list) {
+      const p = cupWorldPosition(side, c);
       let mesh = map.get(c.id);
       if (!mesh) {
         mesh = buildCup(env.materials);
         mesh.userData = { side, cupId: c.id };
+        mesh.position.set(p.x, p.y, p.z);
         map.set(c.id, mesh);
         scene.add(mesh);
       }
-      const p = cupWorldPosition(side, c);
-      mesh.position.set(p.x, p.y, p.z);
+      mesh.userData.target = new THREE.Vector3(p.x, p.y, p.z);
+    }
+  }
+
+  function animateCups(dt: number) {
+    const k = 1 - Math.exp(-dt * CUP_GLIDE_RATE);
+    for (const map of cups) {
+      for (const mesh of map.values()) {
+        const target = mesh.userData.target as THREE.Vector3 | undefined;
+        if (target) mesh.position.lerp(target, k);
+      }
+    }
+    for (let i = leaving.length - 1; i >= 0; i--) {
+      const l = leaving[i]!;
+      l.t += dt;
+      const u = Math.min(1, l.t / CUP_LEAVE_SECONDS);
+      l.mesh.position.y = 0.06 * Math.sin(u * Math.PI);
+      l.mesh.scale.setScalar(Math.max(0.001, 1 - u * u));
+      if (u >= 1) {
+        scene.remove(l.mesh);
+        leaving.splice(i, 1);
+      }
     }
   }
 
@@ -136,6 +163,7 @@ export function createScene(canvas: HTMLCanvasElement, tableId: TableId): GameSc
   let elapsed = 0;
   function render(dt: number) {
     elapsed += dt;
+    animateCups(dt);
     env.update(dt, elapsed);
     composer.render(dt);
   }
