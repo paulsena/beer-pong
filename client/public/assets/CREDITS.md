@@ -1,5 +1,7 @@
 # Asset credits
 
+Every third-party asset in this folder must be CC0 (fonts: OFL) and listed here with its source URL and license.
+
 ## Audio (Track E: `client/public/assets/audio/`)
 
 All files below are CC0 1.0 (public domain, https://creativecommons.org/publicdomain/zero/1.0/), by Kenney (https://www.kenney.nl). Renamed; otherwise unmodified.
@@ -20,3 +22,9 @@ The avatar is built from Three.js primitives in `client/src/avatar.ts`; no exter
 ## Fonts (Track E)
 
 "Lilita One" (Juan Montoreano) and "Nunito" (Vernon Adams et al.) from Google Fonts, SIL Open Font License 1.1, loaded via `fonts.googleapis.com` in `client/index.html`.
+
+## Environments (Track D)
+
+Both table environments (`client/src/environments/basement.ts`, `backyard.ts`) are built entirely
+from Three.js primitives and canvas-drawn textures (brick, wood planks, posters, rug), so they ship
+no model or texture files and need no network access at runtime.
