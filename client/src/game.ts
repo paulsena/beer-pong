@@ -87,6 +87,7 @@ export class Game {
     // Aim from the seat's fixed facing, not the camera (which turns to follow the ball).
     this.throwInput = createThrowInput(canvas, this.gs.camera, seat === 0 ? 0 : Math.PI);
     this.throwInput.onRelease((p, v) => this.launch(p, v));
+    this.gs.scene.add(this.throwInput.object);
 
     canvas.addEventListener('pointerdown', this.onPointerDown);
     window.addEventListener('resize', this.onResize);
@@ -255,6 +256,10 @@ export class Game {
       }
     }
 
+    this.throwInput.setTargets(state.sides[opp].map((c) => {
+      const w = cupWorldPosition(opp, c);
+      return new THREE.Vector3(w.x, w.y, w.z);
+    }));
     this.opponent.setColor(state.players[opp]?.color ?? '#888888');
     this.opponent.setThrowing(state.phase === 'playing' && state.turn === opp);
     ui.updateHud(state, me);
@@ -458,6 +463,7 @@ export class Game {
     const physics = this.physics!;
     if (this.canThrow()) this.throwInput.enable();
     else this.throwInput.disable();
+    this.throwInput.update(dt);
 
     if (this.myThrowId !== null || this.linger >= 0) {
       this.throwClock += dt;

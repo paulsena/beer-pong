@@ -55,6 +55,12 @@ function startPractice(table: TableId) {
   window.addEventListener('keydown', unlock, { once: true });
   const session = new LocalSession(table);
   const game = new Game({ canvas, session, ui, audio, seat: 0, state: session.state, practice: true });
+  const exit = document.createElement('button');
+  exit.type = 'button';
+  exit.className = 'bp-exit-practice';
+  exit.textContent = '← Menu';
+  exit.addEventListener('click', () => (location.href = location.pathname));
+  uiRoot.append(exit);
   window.__bp = { game, seat: 0, code: null };
   void game.start();
   session.start();
@@ -129,6 +135,9 @@ function startOnline() {
       onCreate: ({ name, color, table }) => {
         void audio.unlock();
         void request(() => net.send({ t: 'create_room', name, color, table }));
+      },
+      onPractice: (table) => {
+        location.href = `${location.pathname}?practice=${table}`;
       },
       onJoin: ({ name, color, code }) => {
         void audio.unlock();

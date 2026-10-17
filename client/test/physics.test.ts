@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CUP, THROW, type Vec3, cupWorldPosition, eyePosition, initialRack } from '@bp/shared';
 import { Physics, type PhysicsEvent } from '../src/physics';
-import { aimVelocity, flickToVelocity } from '../src/throw';
+import { SWING, aimVelocity, flickToVelocity, swingToVelocity } from '../src/throw';
 
 /** Release point for seat 0. */
 function releasePoint(): Vec3 {
@@ -83,5 +83,40 @@ describe('physics', () => {
     expect(sinks).toBeGreaterThanOrEqual(3);
     expect(sinks).toBeLessThan(outcomes.length / 2);
     expect(flickToVelocity({ up: 0.1, side: 0 }, from, 0, false)).toBeNull();
+  });
+
+  describe('swing meter', () => {
+    /** rand sequence that makes the scatter sample exactly 0 (cos(2π·0.25) = 0). */
+    const noScatter = () => {
+      let i = 0;
+      return () => (i++ % 2 === 0 ? 0.5 : 0.25);
+    };
+    const shoot = async (cupId: number, power: number, accuracy: number) => {
+      const from = releasePoint();
+      const cup = initialRack().find((c) => c.id === cupId)!;
+      const c = cupWorldPosition(1, cup);
+      const v = swingToVelocity(from, [c.x, CUP.height, c.z], false, { power, accuracy }, noScatter())!;
+      return (await run(from, v)).end;
+    };
+
+    it('a perfect swing sinks every cup it is aimed at', async () => {
+      for (const cup of initialRack()) {
+        const end = await shoot(cup.id, 1, 0);
+        expect(end, `cup ${cup.id}`).toMatchObject({ type: 'sink', cupId: cup.id, bounced: false });
+      }
+    });
+
+    it('swings inside the perfect zones still sink', async () => {
+      for (const [power, accuracy] of [[1 + SWING.powerPerfect * 0.9, SWING.accuracyPerfect * 0.9], [1 - SWING.powerPerfect * 0.9, -SWING.accuracyPerfect * 0.9]] as const) {
+        expect((await shoot(4, power, accuracy))?.type).toBe('sink');
+      }
+    });
+
+    it('a badly short or crooked swing does not hit the aimed cup', async () => {
+      for (const [power, accuracy] of [[0.7, 0], [1, 0.14], [1, -0.14]] as const) {
+        const end = await shoot(9, power, accuracy);
+        expect(end?.type === 'sink' && end.cupId === 9, `power ${power} acc ${accuracy}`).toBe(false);
+      }
+    });
   });
 });
