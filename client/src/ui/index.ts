@@ -10,6 +10,8 @@ import { injectStyles } from './styles';
 export interface MenuHandlers {
   onCreate(p: { name: string; color: string; table: TableId }): void;
   onJoin(p: { name: string; color: string; code: string }): void;
+  /** Single-player practice on the selected table (no name needed). */
+  onPractice?(table: TableId): void;
 }
 
 export interface UI {

@@ -24,7 +24,8 @@ npm run dev          # client on http://localhost:5173 (+ optional WebSocket ser
 
 - Play online: open http://localhost:5173, create a room, and open the invite link in a second
   window (or send it to a friend on your network).
-- Practice alone: http://localhost:5173/?practice=basement (or `backyard`).
+- Practice alone: **Practice solo** on the main menu (uses the selected table), or
+  http://localhost:5173/?practice=basement (or `backyard`). **← Menu** (bottom right) exits.
 
 ## Controls
 

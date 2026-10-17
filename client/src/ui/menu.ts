@@ -90,7 +90,12 @@ export function buildMenu(handlers: MenuHandlers, prefillCode: string | undefine
     storageSet(KEY_NAME, n);
     handlers.onCreate({ name: n, color, table });
   });
-  const createCard = h('div.bp-card', null, h('h2', null, 'Create room'), h('p.bp-label', null, 'Pick a table'), tables, createBtn);
+  const practiceBtn = button('Practice solo', 'bp-practice', () => {
+    click();
+    storageSet(KEY_TABLE, table);
+    handlers.onPractice?.(table);
+  });
+  const createCard = h('div.bp-card', null, h('h2', null, 'Create room'), h('p.bp-label', null, 'Pick a table'), tables, createBtn, practiceBtn);
 
   // --- join ---
   const codeInput = h('input.bp-input.bp-code-input', { type: 'text', maxlength: NET.roomCodeLength, placeholder: 'CODE', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Room code' });

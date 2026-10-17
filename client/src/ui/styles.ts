@@ -61,6 +61,8 @@ export const CSS = /* css */ `
 #ui button.bp-primary:hover { filter: brightness(1.06); }
 #ui button.bp-primary:active { box-shadow: 0 2px 0 #b4421d, 0 4px 10px rgba(255, 120, 40, 0.3); }
 #ui button.bp-big { font-size: 24px; padding: 14px 26px; border-radius: 16px; }
+#ui button.bp-practice { width: 100%; margin-top: 10px; }
+#ui button.bp-exit-practice { position: absolute; right: 70px; bottom: 14px; height: 44px; pointer-events: auto; background: var(--bp-panel); }
 
 #ui input.bp-input {
   font-family: var(--bp-font);
