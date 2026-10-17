@@ -1,4 +1,5 @@
-import { EMOTES, QUICK_CHAT, RERACK_SHAPES, TABLE_IDS, type ClientMessage } from '@bp/shared';
+import { EMOTES, QUICK_CHAT, RERACK_SHAPES, TABLE_IDS } from './constants';
+import type { ClientMessage } from './protocol';
 
 const integer = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
 const vector = (v: unknown, size: number) => Array.isArray(v) && v.length === size && v.every(n => typeof n === 'number' && Number.isFinite(n));

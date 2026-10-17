@@ -4,10 +4,12 @@
 //   ?room=CODE          prefill the join code (invite links)
 //   ?practice=<table>   offline practice against an empty rack
 //   ?shot=<table>&cam=  screenshot mode for tools/screenshots.ts
+//   ?net=ws             use the WebSocket server instead of peer-to-peer (also when VITE_SERVER_URL is set)
 import { type CameraPreset, CAMERA_PRESETS, createScene } from './scene';
 import { type GameState, type Seat, type TableId, TABLE_IDS, createInitialState } from '@bp/shared';
 import { Game } from './game';
-import { NetClient } from './net';
+import { NetClient, type GameClient } from './net';
+import { P2PClient } from './p2p';
 import { LocalSession } from './session';
 import { createUI } from './ui';
 import { createAudio } from './audio';
@@ -61,7 +63,8 @@ function startPractice(table: TableId) {
 function startOnline() {
   const ui = createUI(uiRoot);
   const audio = createAudio();
-  const net = new NetClient();
+  const useServer = params.get('net') === 'ws' || !!import.meta.env.VITE_SERVER_URL;
+  const net: GameClient = useServer ? new NetClient() : new P2PClient();
   let game: Game | null = null;
   // A refresh can rejoin without touching the menu, so unlock audio on the first gesture too.
   const unlock = () => void audio.unlock();
@@ -137,7 +140,7 @@ function startOnline() {
 
   // Refreshed mid-game: the saved token rejoins automatically as soon as we connect.
   const room = params.get('room')?.toUpperCase();
-  if (room && net.savedRoomCode() === room) void connect();
+  if (room && net.savedRoomCode() === room) net.resume();
 }
 
 const shotTable = asTable(params.get('shot'));

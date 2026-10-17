@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
 import { NET } from '@bp/shared';
-import { RoomManager, type Connection, type RoomOptions } from './rooms';
+import { RoomManager, type Connection, type RoomOptions } from '@bp/shared';
 
 const HEARTBEAT_MS = 15_000;
 

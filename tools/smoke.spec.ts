@@ -19,10 +19,10 @@ async function waitFor(page: Page, pred: (s: Snapshot) => boolean, what: string)
   await expect.poll(async () => {
     const s = await snapshot(page);
     return s !== null && pred(s);
-  }, { message: what, timeout: 60_000 }).toBe(true);
+  }, { message: `${what} (last: ${JSON.stringify(await snapshot(page).catch(() => null))})`, timeout: 60_000 }).toBe(true);
 }
 
-test('two players create, join, and stay in sync', async ({ browser }) => {
+async function startRoom(browser: import('@playwright/test').Browser) {
   const host = await (await browser.newContext()).newPage();
   const guest = await (await browser.newContext()).newPage();
   for (const p of [host, guest]) p.on('pageerror', (e) => console.error(`[pageerror] ${e.message}`));
@@ -42,6 +42,15 @@ test('two players create, join, and stay in sync', async ({ browser }) => {
   for (const p of [host, guest]) await waitFor(p, (s) => s.phase === 'playing' && s.turn === 0, 'game starts');
   expect(await host.evaluate(() => window.__bp!.seat)).toBe(0);
   expect(await guest.evaluate(() => window.__bp!.seat)).toBe(1);
+  return { host, guest };
+}
+
+test.afterEach(async ({ browser }) => {
+  for (const context of browser.contexts()) await context.close();
+});
+
+test('two players create, join, and stay in sync', async ({ browser }) => {
+  const { host, guest } = await startRoom(browser);
 
   // Throw 1: host sinks the apex cup of the guest's rack.
   expect(await host.evaluate(() => window.__bp!.game!.scriptedThrow(9))).toBe(true);
@@ -54,4 +63,18 @@ test('two players create, join, and stay in sync', async ({ browser }) => {
   // Guest's throw sinks one of the host's cups.
   await expect.poll(() => guest.evaluate(() => window.__bp!.game!.scriptedThrow(9)), { timeout: 30_000 }).toBe(true);
   for (const p of [host, guest]) await waitFor(p, (s) => s.throwId === 3 && s.cups[0] === 9, 'guest sink syncs');
+});
+
+test('a guest who refreshes mid-game rejoins with the same state', async ({ browser }) => {
+  const { host, guest } = await startRoom(browser);
+  expect(await host.evaluate(() => window.__bp!.game!.scriptedThrow(9))).toBe(true);
+  for (const p of [host, guest]) await waitFor(p, (s) => s.throwId === 1 && s.cups[1] === 9, 'sink syncs');
+
+  await guest.reload();
+  await waitFor(guest, (s) => s.phase === 'playing' && s.throwId === 1 && s.cups[1] === 9, 'guest rejoined with state');
+  expect(await guest.evaluate(() => window.__bp!.seat)).toBe(1);
+
+  // Play continues across the rejoin.
+  await expect.poll(() => host.evaluate(() => window.__bp!.game!.scriptedThrow(0, true)), { timeout: 30_000 }).toBe(true);
+  for (const p of [host, guest]) await waitFor(p, (s) => s.throwId === 2 && s.turn === 1, 'turn passes after rejoin');
 });

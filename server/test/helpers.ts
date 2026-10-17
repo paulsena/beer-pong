@@ -1,5 +1,5 @@
 import type { GameAction, GameState, ReduceResult, ServerMessage } from '@bp/shared';
-import type { Connection } from '../src/rooms';
+import type { Connection } from '@bp/shared';
 
 /** Deliberately tiny lifecycle reducer: game rules belong to Track B. */
 export function fakeReducer(state: GameState, action: GameAction): ReduceResult {

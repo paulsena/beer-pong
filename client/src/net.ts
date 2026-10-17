@@ -1,5 +1,6 @@
 import type { ClientMessage, ServerMessage, ServerMessageOf, ServerMessageType } from '@bp/shared';
 import { NET } from '@bp/shared';
+import type { Session } from './session';
 
 export function defaultServerUrl(): string {
   const fromEnv = import.meta.env.VITE_SERVER_URL as string | undefined;
@@ -9,10 +10,20 @@ export function defaultServerUrl(): string {
 }
 
 export type ConnectionStatus = 'connecting' | 'open' | 'reconnecting' | 'closed';
+
+/** What main.ts needs from a transport: the WebSocket NetClient or the peer-to-peer P2PClient. */
+export interface GameClient extends Session {
+  connect(): Promise<void>;
+  /** Rejoin the saved room (after a page refresh). */
+  resume(): void;
+  savedRoomCode(): string | null;
+  onStatus(cb: (s: ConnectionStatus) => void): () => void;
+  close(): void;
+}
 type Credentials = { code: string; token: string };
 const STORAGE_KEY = 'bp.rejoin';
 
-export class NetClient {
+export class NetClient implements GameClient {
   private socket: WebSocket | null = null;
   private status: ConnectionStatus = 'closed';
   private readonly handlers = new Map<ServerMessageType, Set<(msg: ServerMessage) => void>>();
@@ -113,6 +124,8 @@ export class NetClient {
   }
   /** Room code of saved rejoin credentials (survive a page refresh in this tab), if any. */
   savedRoomCode(): string | null { return this.credentials?.code ?? null; }
+  /** Connecting with saved credentials sends `rejoin` automatically. */
+  resume(): void { void this.connect(); }
   send(msg: ClientMessage): void { this.flushMessage(msg); }
   on<T extends ServerMessageType>(t: T, handler: (msg: ServerMessageOf<T>) => void): () => void {
     let handlers = this.handlers.get(t);

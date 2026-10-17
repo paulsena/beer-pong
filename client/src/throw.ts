@@ -15,6 +15,8 @@ export interface ThrowInput {
   onRelease(cb: (p: Vec3, v: Vec3) => void): void;
   /** Where the held ball should be drawn, or null when not holding. */
   heldBallPosition(): THREE.Vector3 | null;
+  /** The resting release point in the hand (valid even while throwing is disabled). */
+  releasePoint(): THREE.Vector3;
   /** True while Shift is held (bounce-shot mode), for HUD hints. */
   bounceMode(): boolean;
   update(dt: number): void;
@@ -188,6 +190,9 @@ export function createThrowInput(canvas: HTMLCanvasElement, camera: THREE.Perspe
     },
     heldBallPosition() {
       return enabled ? handPosition(held) : null;
+    },
+    releasePoint() {
+      return handPosition(new THREE.Vector3());
     },
     bounceMode: () => shift,
     update() {},

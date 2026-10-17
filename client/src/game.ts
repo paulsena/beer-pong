@@ -312,7 +312,7 @@ export class Game {
   }
 
   private handPoint(): Vec3 {
-    const p = this.throwInput.heldBallPosition() ?? this.gs.camera.position;
+    const p = this.throwInput.releasePoint();
     return [p.x, p.y, p.z];
   }
 

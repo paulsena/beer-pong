@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NET, RULES, type ClientMessage, type ServerMessageOf } from '@bp/shared';
-import { RoomManager } from '../src/rooms';
+import { RoomManager } from '@bp/shared';
 import { fakeReducer, peer } from './helpers';
 
 describe('RoomManager', () => {

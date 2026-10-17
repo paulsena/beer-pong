@@ -1,9 +1,25 @@
-import { randomBytes, randomInt } from 'node:crypto';
-import {
-  NET, RULES, createInitialState, otherSeat, reduce,
-  type ErrorCode, type GameAction, type GameState, type Seat, type ServerMessage, type TableId,
-} from '@bp/shared';
+// Room logic: codes, seats, rejoin, turn gating via `reduce`, relays. Runs in the Node server and,
+// for peer-to-peer games, in the host player's browser.
+import { NET, RULES, otherSeat, type Seat, type TableId } from './constants';
+import type { ErrorCode, ServerMessage } from './protocol';
+import { createInitialState, reduce, type GameAction, type GameState } from './rules';
 import { parseMessage } from './messages';
+
+/** Uniform random integer in [0, n), from Web Crypto (Node 19+ and browsers). */
+function randomInt(n: number): number {
+  const limit = Math.floor(0x1_0000_0000 / n) * n;
+  const buf = new Uint32Array(1);
+  do crypto.getRandomValues(buf); while (buf[0]! >= limit);
+  return buf[0]! % n;
+}
+
+export function randomRoomCode(): string {
+  return Array.from({ length: NET.roomCodeLength }, () => NET.roomCodeAlphabet[randomInt(NET.roomCodeAlphabet.length)]).join('');
+}
+
+function randomToken(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 export interface Clock {
   now(): number;
@@ -17,7 +33,13 @@ const clock: Clock = {
 };
 export interface Connection { send(message: ServerMessage): void }
 interface Reservation { token: string; connection: Connection | null; expires: number | null; timer?: unknown }
-export interface RoomOptions { reducer?: typeof reduce; clock?: Clock; log?: (line: string) => void }
+export interface RoomOptions {
+  reducer?: typeof reduce;
+  clock?: Clock;
+  log?: (line: string) => void;
+  /** Room code source (a P2P host picks its code before it can accept peers). Must avoid live codes. */
+  newCode?: () => string;
+}
 
 export class Room {
   state: GameState;
@@ -50,7 +72,9 @@ export class RoomManager {
     this.reducer = options.reducer ?? reduce;
     this.clock = options.clock ?? clock;
     this.log = options.log ?? console.log;
+    this.newCode = options.newCode ?? randomRoomCode;
   }
+  private readonly newCode: () => string;
   private error(sender: Connection, code: ErrorCode): void { sender.send({ t: 'error', code, message: code }); }
   private joined(room: Room, seat: Seat, sender: Connection): void {
     const reservation = room.seats[seat]!;
@@ -89,7 +113,7 @@ export class RoomManager {
       let seat: Seat;
       if (msg.t === 'create_room') {
         let code: string;
-        do { code = Array.from({ length: NET.roomCodeLength }, () => NET.roomCodeAlphabet[randomInt(NET.roomCodeAlphabet.length)]).join(''); } while (this.rooms.has(code));
+        do { code = this.newCode(); } while (this.rooms.has(code));
         room = new Room(code, msg.table, this.reducer);
         seat = 0;
       } else {
@@ -102,7 +126,7 @@ export class RoomManager {
         seat = free;
       }
       if (!room.dispatch({ type: 'join', seat, name: msg.name.trim().slice(0, NET.maxNameLength), color: msg.color.toLowerCase() }, sender, () => {
-        room.seats[seat] = { token: randomBytes(32).toString('hex'), connection: sender, expires: null };
+        room.seats[seat] = { token: randomToken(), connection: sender, expires: null };
         this.rooms.set(room.code, room);
         this.joined(room, seat, sender);
       })) return;
