@@ -72,6 +72,8 @@ function startOnline() {
   net.on('joined', (m) => {
     window.__bp!.code = m.code;
     window.__bp!.seat = m.seat;
+    // Keep the room in the URL so a refresh rejoins it (see the auto-rejoin below).
+    history.replaceState(null, '', `${location.pathname}?room=${m.code}`);
     if (game) return; // rejoin after a reconnect: the game keeps running and picks up the next state
     if (m.state.phase === 'waiting') {
       ui.showLobby(m.code, `${location.origin}${location.pathname}?room=${m.code}`);
@@ -115,6 +117,10 @@ function startOnline() {
     },
     params.get('room') ?? undefined,
   );
+
+  // Refreshed mid-game: the saved token rejoins automatically as soon as we connect.
+  const room = params.get('room')?.toUpperCase();
+  if (room && net.savedRoomCode() === room) void connect();
 }
 
 const shotTable = asTable(params.get('shot'));

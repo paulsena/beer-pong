@@ -111,6 +111,8 @@ export class NetClient {
     const delay = Math.min(500 * 2 ** this.attempts++, 10_000);
     this.retry = setTimeout(() => { this.retry = undefined; this.open(true); }, delay);
   }
+  /** Room code of saved rejoin credentials (survive a page refresh in this tab), if any. */
+  savedRoomCode(): string | null { return this.credentials?.code ?? null; }
   send(msg: ClientMessage): void { this.flushMessage(msg); }
   on<T extends ServerMessageType>(t: T, handler: (msg: ServerMessageOf<T>) => void): () => void {
     let handlers = this.handlers.get(t);
